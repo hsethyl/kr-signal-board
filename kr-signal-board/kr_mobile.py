@@ -178,7 +178,7 @@ details{margin-top:22px}summary{font-weight:700;cursor:pointer;font-size:15px}
   <h1>한국주식 신호 알림판</h1>
   <div class="meta" id="meta"></div>
 </header>
-<div class="warn"><b>검증 불합격 · 관찰용.</b> 대형주 33종목 2014~2026 검증에서 거래당 평균 +0.02R, 6개 기준 중 2개만 통과했습니다. 모의 기록용이며 투자 조언이 아닙니다.</div>
+<div class="warn"><b>김민혁 · 관찰용.</b> 대형주 33종목 2014~2026 검증에서 거래당 평균 +0.02R, 6개 기준 중 2개만 통과했습니다. 모의 기록용이며 투자 조언이 아닙니다.</div>
 <div class="sum">
   <div><span>오늘 매수 신호</span><b class="up" id="nBuy">0</b></div>
   <div><span>오늘 매도</span><b class="down" id="nSell">0</b></div>
