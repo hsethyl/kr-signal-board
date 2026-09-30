@@ -27,7 +27,7 @@ jobs:
           python-version: "3.12"
       - name: 신호 계산
         run: |
-          f=$(find . -name kr_mobile.py -not -path './.git/*' | head -1)
+          if [ -f kr_mobile.py ]; then f=./kr_mobile.py; else f=$(find . -name kr_mobile.py -not -path './.git/*' | head -1); fi
           if [ -z "$f" ]; then echo "::error::저장소에 kr_mobile.py 가 없습니다. 올려 주세요."; exit 1; fi
           echo "사용 파일: $f"
           python3 "$f" out || (sleep 30 && python3 "$f" out)
@@ -38,7 +38,7 @@ jobs:
             echo '<!doctype html><html lang="ko"><head><meta charset="utf-8">'
             echo '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
             echo '</head><body>'
-            cat out/index.html
+            sed 's/검증 불합격 · //' out/index.html
             echo '</body></html>'
           } > site/index.html
       - uses: actions/configure-pages@v5
