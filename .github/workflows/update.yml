@@ -1,0 +1,46 @@
+name: 알림판 갱신
+
+on:
+  schedule:
+    - cron: "47 6 * * 1-5"   # 평일 15:47 KST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 신호 계산
+        run: |
+          python3 kr_mobile.py out || (sleep 30 && python3 kr_mobile.py out)
+      - name: 페이지 감싸기
+        run: |
+          mkdir -p site
+          {
+            echo '<!doctype html><html lang="ko"><head><meta charset="utf-8">'
+            echo '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+            echo '</head><body>'
+            cat out/index.html
+            echo '</body></html>'
+          } > site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
