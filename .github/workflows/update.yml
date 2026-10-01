@@ -3,6 +3,7 @@ name: 알림판 갱신
 on:
   schedule:
     - cron: "47 6 * * 1-5"   # 평일 15:47 KST
+    - cron: "17 8 * * 1-5"   # 평일 17:17 KST (예비: 첫 실행이 늦거나 빠졌을 때만 실제로 돎)
   workflow_dispatch:
 
 permissions:
@@ -12,7 +13,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-deploy:
@@ -21,17 +22,30 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: 예비 실행이면 오늘 이미 갱신됐는지 확인
+        id: check
+        run: |
+          today=$(TZ=Asia/Seoul date +%Y%m%d)
+          page="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/"
+          if [ "${{ github.event.schedule }}" = "17 8 * * 1-5" ] && curl -fsSL "$page" | grep -q "\"last\": \"$today\""; then
+            echo "오늘 이미 갱신됨 → 예비 실행 건너뜀"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.check.outputs.skip != 'true'
+        uses: actions/checkout@v4
+      - if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: 신호 계산
+        if: steps.check.outputs.skip != 'true'
         run: |
           if [ -f kr_mobile.py ]; then f=./kr_mobile.py; else f=$(find . -name kr_mobile.py -not -path './.git/*' | head -1); fi
           if [ -z "$f" ]; then echo "::error::저장소에 kr_mobile.py 가 없습니다. 올려 주세요."; exit 1; fi
           echo "사용 파일: $f"
-          python3 "$f" out || (sleep 30 && python3 "$f" out)
+          (python3 "$f" out || (sleep 30 && python3 "$f" out)) | tee run.log
       - name: 페이지 감싸기
+        if: steps.check.outputs.skip != 'true'
         run: |
           mkdir -p site
           {
@@ -41,9 +55,48 @@ jobs:
             sed 's/검증 불합격 · //' out/index.html
             echo '</body></html>'
           } > site/index.html
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - if: steps.check.outputs.skip != 'true'
+        uses: actions/configure-pages@v5
+      - if: steps.check.outputs.skip != 'true'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
       - id: deploy
+        if: steps.check.outputs.skip != 'true'
         uses: actions/deploy-pages@v4
+      - name: 휴대폰 알림 (ntfy)
+        if: steps.check.outputs.skip != 'true' && always()
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          JOB_STATUS: ${{ job.status }}
+          PAGE_URL: ${{ steps.deploy.outputs.page_url }}
+        run: |
+          if [ -z "$NTFY_TOPIC" ]; then echo "NTFY_TOPIC 시크릿이 없어 알림 생략"; exit 0; fi
+          msg=$(python3 - <<'EOF'
+          import json, os
+          def short(xs):
+              return ", ".join(xs[:5]) + (f" 외 {len(xs)-5}" if len(xs) > 5 else "")
+          line = ""
+          try:
+              line = [l for l in open("run.log", encoding="utf-8") if l.startswith("SUMMARY ")][-1]
+          except Exception:
+              pass
+          if os.environ.get("JOB_STATUS") != "success" or not line:
+              print("알림판 갱신 실패: 깃허브 Actions 실행 기록을 확인하세요")
+          else:
+              s = json.loads(line[8:])
+              if s["holiday"]:
+                  print("오늘 휴장 · 알림판 갱신 생략")
+              else:
+                  parts = []
+                  if s["buy"]: parts.append("🔴 매수: " + short(s["buy"]))
+                  if s["sell"]: parts.append("🔵 매도: " + short(s["sell"]))
+                  if s["raised"]: parts.append("손절 상향: " + short(s["raised"]))
+                  if not (s["buy"] or s["sell"]):
+                      print("매수·매도 신호 없음 · 손절 상향: " + short(s["raised"]) if s["raised"] else "오늘 매수·매도 신호 없음")
+                  else:
+                      print(" / ".join(parts))
+          EOF
+          )
+          echo "$msg"
+          curl -fsS -H "Title: 한국주식 신호 알림판" ${PAGE_URL:+-H "Click: $PAGE_URL"} -d "$msg" "https://ntfy.sh/$NTFY_TOPIC" >/dev/null
